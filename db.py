@@ -37,4 +37,3 @@ def delete_table_viewed():
 
 create_table_viewed()
 print("База данных создана!")
-
