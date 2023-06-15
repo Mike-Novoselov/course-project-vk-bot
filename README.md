@@ -28,8 +28,7 @@
 Не запрещается использовать внешние библиотеки для vk.
 
 pip list
-Package            Version
------------------- ---------
-psycopg2           2.9.6
-SQLAlchemy         2.0.15
-vk-api             11.9.9
+Package
+psycopg2  2.9.6
+SQLAlchemy  2.0.15
+vk-api  11.9.9
