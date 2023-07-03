@@ -3,21 +3,22 @@ import datetime
 import vk_api
 from config import user_token, group_token
 from random import randrange
-from pprint import pprint
-from db import *
+from db import check, insert_data_viewed
 
 
 class Bot:
     def __init__(self):
         print('Бот создан!')
-        self.vk_user = vk_api.VkApi(
-            token=user_token)  # Создаем переменную сессии, авторизованную личным токеном пользователя.
+        self.vk_user = vk_api.VkApi(token=user_token)  # Создаем переменную сессии, авторизованную личным токеном пользователя.
         self.vk_user_got_api = self.vk_user.get_api()  # # переменную сессии vk_user подключаем к api списку методов.
         self.vk_group = vk_api.VkApi(token=group_token)  # Создаем переменную сесии, авторизованную токеном сообщества.
         self.vk_group_got_api = self.vk_group.get_api()  # переменную сессии vk_group подключаем к api списку методов.
-        self.longpoll = VkLongPoll(
-            self.vk_group)  # переменную сессии vk_group_got_api подключаем к Long Poll API,
-        
+        self.longpoll = VkLongPoll(self.vk_group)  # переменную сессии vk_group_got_api подключаем к Long Poll API,
+        self.age_from = None
+        self.age_to = None
+        self.city_id = None
+        self.city_title = None
+        self.list_found_persons = []        
 
     def send_msg(self, user_id, message):
         """Функция отправки сообщений пользователю. 
@@ -33,6 +34,41 @@ class Bot:
             print(f"Ошибка при отправке сообщения: {e}")
             return False  # Ошибка при отправке сообщения
 
+    def get_user_info(self, user_id):
+        """
+        Получение информации о пользователе, включая имя, возраст, город и пол.
+        Принимает идентификатор пользователя user_id.
+        Возвращает словарь с информацией о пользователе или отправляет сообщение об ошибке.
+        """
+        try:
+            user_info = self.vk_group_got_api.users.get(
+                user_id=user_id,
+                fields="bdate,sex,city",
+            )[0]
+            
+            name = user_info.get('first_name')
+            bdate = user_info.get('bdate')
+            sex = user_info.get('sex')
+            city = user_info.get('city')
+            # print(f'Имя {name}')
+            # print(f'Дата рождения {bdate}')
+            # print(f'Пол {sex}')
+            # print(f"Город {city ['title']}")
+
+            if name is not None and bdate is not None and sex is not None and city is not None:
+                return {
+                    'name': name,
+                    'bdate': bdate,
+                    'sex': sex,
+                    'city': city
+                }
+            else:
+                error_message = "Ошибка: недостаточно данных о пользователе"
+        except KeyError as e:
+            error_message = f"Ошибка: {e}"
+        
+        self.send_msg(user_id, error_message)
+
     def get_user_name(self, user_id):
         """
         Получение имени пользователя, который написал боту.
@@ -40,16 +76,126 @@ class Bot:
         Возвращает имя пользователя или отправляет сообщение об ошибке.
         """
         try:
-            user_info = self.vk_group_got_api.users.get(user_id=user_id)
-            name = user_info[0].get('first_name')
-            if name is not None:
-                return name
+            user_info = self.get_user_info(user_id)
+            if user_info:
+                return user_info['name']
             else:
                 error_message = "Ошибка: имя пользователя не найдено"
         except KeyError as e:
             error_message = f"Ошибка: {e}"
         
         self.send_msg(user_id, error_message)
+
+    def get_age_of_user(self, user_id):
+        """Определение возраста пользователя. Принимает идентификатор пользователя user_id."""
+        
+        user_info = self.get_user_info(user_id)
+        if user_info:
+            try:
+                bdate = user_info['bdate']
+                num_age = self.get_years_of_person(bdate).split()[0]
+                self.age_from = num_age
+                self.age_to = num_age
+                if num_age == "День":
+                    print(f'Ваш {self.get_years_of_person(bdate)}')
+                    self.send_msg(user_id,
+                                  f'   Бот ищет людей вашего возраста, но в ваших настройках профиля установлен пункт "Показывать только месяц и день рождения"! \n'
+                                  f'   Поэтому, введите возраст поиска, на пример от 21 года и до 35 лет, в формате : 21-35 (или 21 конкретный возраст 21 год).'
+                                  )
+                    for event in self.longpoll.listen():
+                        if event.type == VkEventType.MESSAGE_NEW and event.to_me:
+                            age = event.text
+                            return self.input_looking_age(user_id, age)
+                return print(f'Ищем пару в пределах Вашего возраста {self.naming_of_years(self.age_to)}')
+            except KeyError:
+                error_message = "Ошибка: информация о дате рождения пользователя не найдена"
+        self.send_msg(user_id, error_message)
+
+    def get_target_city(self, user_id):
+        """Определение города для поиска. Принимает идентификатор пользователя user_id.
+        Функция не отправляет сообщение о том, что город не найден.
+        Логика поведения бота - анкеты закончились (так как поиск анкет выдает 0),
+        предлагает изменить возраст поиска и город поиска."""
+        self.city_id = None  # Инициализация атрибута city_id
+        self.city_title = None  # Инициализация атрибута city_title
+        user_info = self.get_user_info(user_id)
+        if user_info:
+            city = user_info.get('city')
+            if city:
+                self.city_id = city.get('id')
+                self.city_title = city.get('title')
+                self.send_msg(user_id, f'Вы указали город {self.city_title}. Хотите ли поискать анкеты в этом городе?')
+                for event in self.longpoll.listen():
+                    if event.type == VkEventType.MESSAGE_NEW and event.to_me:
+                        answer = event.text.lower()
+                        if answer == "да" or answer == "y":
+                            return f'в городе {self.city_title}.'
+                        else:
+                            self.send_msg(user_id, 'Введите название города, например: Москва')
+                            for event in self.longpoll.listen():
+                                if event.type == VkEventType.MESSAGE_NEW and event.to_me:
+                                    answer = event.text
+                                    cities = self.vk_user_got_api.database.getCities(country_id=1, q=answer.capitalize(), need_all=1, count=100)['items']
+                                    matched_cities = [c for c in cities if c["title"] == answer.capitalize()]
+                                    if matched_cities:
+                                        self.city_id = matched_cities[0]["id"]
+                                        self.city_title = answer.capitalize()
+                                        self.send_msg(user_id, f'Вы указали город {self.city_title}. Хотите ли поискать анкеты в этом городе?')
+                                        for event in self.longpoll.listen():
+                                            if event.type == VkEventType.MESSAGE_NEW and event.to_me:
+                                                answer = event.text.lower()
+                                                if answer == "да" or answer == "y":
+                                                    return f'в городе {self.city_title}.'
+                                                else:
+                                                    self.send_msg(user_id, 'Введите "Да" - чтобы поискать анкеты в этом городе, или введите название города, например: Москва')
+                                                    for event in self.longpoll.listen():
+                                                        if event.type == VkEventType.MESSAGE_NEW and event.to_me:
+                                                            answer = event.text.lower()
+                                                            if answer == "да" or answer == "y":
+                                                                return f'в городе {self.city_title}.'
+                                                            else:
+                                                                cities = self.vk_user_got_api.database.getCities(country_id=1, q=answer.capitalize(), need_all=1, count=100)['items']
+                                                                matched_cities = [c for c in cities if c["title"] == answer.capitalize()]
+                                                                if matched_cities:
+                                                                    self.city_id = matched_cities[0]["id"]
+                                                                    self.city_title = matched_cities[0]["title"]
+                                                                    return f'в городе {self.city_title}.'
+                                                                else:
+                                                                    self.send_msg(user_id, 'Город не найден. Введите корректное название города.')
+                                                                    return 'Город не найден. Введите корректное название города.'
+        else:
+            self.send_msg(user_id, 'Город не найден. Введите корректное название города.')
+            return 'Город не найден. Введите корректное название города.'
+
+    def looking_for_gender(self, user_id):
+        """Определение противоположного пола для пользователя. Принимает идентификатор пользователя user_id"""
+        user_info = self.get_user_info(user_id)
+        if user_info:
+            user_sex = user_info['sex']
+            if user_sex == 1:  # 1 — женщина, 2 — мужчина
+                self.send_msg(user_id, "Ваш пол - женский. Будем искать мужчин.")
+                return 2
+            elif user_sex == 2:
+                self.send_msg(user_id, "Ваш пол - мужской. Будем искать женщин.")
+                return 1
+            else:
+                self.send_msg(user_id, "Информация о вашем поле недоступна или неопределена. "
+                                       "Введите пол, который вы хотите найти (1 - женщины, 2 - мужчины):")
+                for event in self.longpoll.listen():
+                    if event.type == VkEventType.MESSAGE_NEW and event.to_me:
+                        gender = event.text.lower()
+                        if gender in ['1', 'ж', 'жен', 'женщины', 'женский']:
+                            self.send_msg(user_id, "Будем искать мужчин.")
+                            return 2
+                        elif gender in ['2', 'м', 'муж', 'мужчины', 'мужской']:
+                            self.send_msg(user_id, "Будем искать женщин.")
+                            return 1
+                        else:
+                            self.send_msg(user_id, "Некорректный ввод. Пожалуйста, укажите пол, который вы хотите найти "
+                                                   "(1 - женщины, 2 - мужчины):")
+        else:
+            self.send_msg(user_id, "Информация о вас недоступна. Пожалуйста, обновите ваш профиль в социальной сети.")
+            return None
 
     def naming_of_years(self, years, till=True):
         """
@@ -134,142 +280,50 @@ class Bot:
             else:
                 return 'Некорректный формат даты рождения.'
 
-    def get_age_of_user(self, user_id):
-        """Определение возраста пользователя. Принимает идентификатор пользователя user_id."""
-        global age_from, age_to
-        try:
-            info = self.vk_user_got_api.users.get(
-                user_ids=user_id,
-                fields="bdate",
-            )[0]['bdate']
-            num_age = self.get_years_of_person(info).split()[0]
-            age_from = num_age
-            age_to = num_age
-            if num_age == "День":
-                print(f'Ваш {self.get_years_of_person(info)}')
-                self.send_msg(user_id,
-                              f'   Бот ищет людей вашего возраста, но в ваших настройках профиля установлен пункт "Показывать только месяц и день рождения"! \n'
-                              f'   Поэтому, введите возраст поиска, на пример от 21 года и до 35 лет, в формате : 21-35 (или 21 конкретный возраст 21 год).'
-                              )
-                for event in self.longpoll.listen():
-                    if event.type == VkEventType.MESSAGE_NEW and event.to_me:
-                        age = event.text
-                        return self.input_looking_age(user_id, age)
-            return print(f'Ищем пару в пределах Вашего возраста {self.naming_of_years(age_to)}')
-        except KeyError:
-            print(f'День рождения скрыт настройками приватности!')
-            self.send_msg(user_id,
-                          f' Бот ищет людей вашего возраста, но в ваших в настройках профиля установлен пункт "Не показывать дату рождения". '
-                          f'\n Поэтому, введите возраст поиска, на пример от 21 года и до 35 лет, в формате : 21-35 (или 21 конкретный возраст 21 год).'
-                          )
-            for event in self.longpoll.listen():
-                if event.type == VkEventType.MESSAGE_NEW and event.to_me:
-                    age = event.text
-                    return self.input_looking_age(user_id, age)
-
-    def get_target_city(self, user_id):
-        """Определение города для поиска. Принимает идентификатор пользователя user_id
-        функция не отправляет что город не найден, 
-        логика поведения бота - анкеты закончелись (так как поиск анкет выдает 0), 
-        предлогает изменить возраст поиска и город поиска"""
-        global city_id, city_title
-        city_id = None  # Инициализация переменной city_id
-        city_title = None  # Инициализация переменной city_title
-        self.send_msg(user_id, 'Введите "Да" - поиск будет произведен в городе указанном в профиле,'
-                              ' или введите название города, например: Москва')
-        for event in self.longpoll.listen():
-            if event.type == VkEventType.MESSAGE_NEW and event.to_me:
-                answer = event.text.lower()
-                if answer == "да" or answer == "y":
-                    info = self.vk_user_got_api.users.get(user_id=user_id, fields="city")
-                    city = info[0].get('city')
-                    if city:
-                        city_id = city["id"]
-                        city_title = city["title"]
-                        return f'в городе {city_title}.'
-                    else:
-                        return 'Город не указан в вашем профиле. Введите название города вручную.'
-                else:
-                    cities = self.vk_user_got_api.database.getCities(country_id=1, q=answer.capitalize(), need_all=1, count=1000)['items']
-                    matched_cities = [c for c in cities if c["title"] == answer.capitalize()]
-                    if matched_cities:
-                        city_id = matched_cities[0]["id"]
-                        city_title = answer.capitalize()
-                        return f'в городе {city_title}.'
-                    else:
-                        return 'Город не найден. Введите корректное название города.'
-
-        if city_id is None or city_title is None:
-            return 'Город не найден. Введите корректное название города.'
-
-    def looking_for_gender(self, user_id):
-        """Определение противоположного пола для пользователя. Принимает идентификатор пользователя user_id"""
-        info = self.vk_user_got_api.users.get(user_id=user_id, fields="sex")
-        user_sex = info[0].get('sex')
-        
-        if user_sex == 1:  # 1 — женщина, 2 — мужчина
-            self.send_msg(user_id, "Ваш пол - женский. Будем искать мужчин.")
-            return 2
-        elif user_sex == 2:
-            self.send_msg(user_id, "Ваш пол - мужской. Будем искать женщин.")
-            return 1
-        else:
-            self.send_msg(user_id, "Информация о вашем поле недоступна или неопределена. "
-                                   "Введите пол, который вы хотите найти (1 - женщины, 2 - мужчины):")
-            for event in self.longpoll.listen():
-                if event.type == VkEventType.MESSAGE_NEW and event.to_me:
-                    gender = event.text.lower()
-                    if gender in ['1', 'ж', 'жен', 'женщины', 'женский']:
-                        self.send_msg(user_id, "Будем искать мужчин.")
-                        return 2
-                    elif gender in ['2', 'м', 'муж', 'мужчины', 'мужской']:
-                        self.send_msg(user_id, "Будем искать женщин.")
-                        return 1
-                    else:
-                        self.send_msg(user_id, "Некорректный ввод. Пожалуйста, укажите пол, который вы хотите найти "
-                                               "(1 - женщины, 2 - мужчины):")
-
+#4 ???
     def looking_for_persons(self, user_id):
         """Поиск людей на основе полученных данных. Принимает идентификатор пользователя user_id"""
-        global list_found_persons
-        list_found_persons = []
+        self.list_found_persons = []
         res = self.vk_user_got_api.users.search(
-            sort=0, # 1 — по дате регистрации, 0 — по популярности.
-            city=city_id,
-            hometown=city_title,
-            sex=self.looking_for_gender(user_id),   # 1— женщина, 2 — мужчина, 0 — любой (по умолчанию).
-            status=1,   # 1 — не женат или не замужем, 6 — в активном поиске.
-            age_from=int(age_from) - 3, # Минимальное расхождение в возрасте -3
-            age_to=int(age_to) + 3, # максимальное расхождение в возрасте +3
-            has_photo=1,    # 1 — искать только пользователей с фотографией, 0 — искать по всем пользователям
-            count=1000,
+            sort=0,  # 1 — по дате регистрации, 0 — по популярности.
+            city=self.city_id,
+            hometown=self.city_title,
+            sex=self.looking_for_gender(user_id),  # 1— женщина, 2 — мужчина, 0 — любой (по умолчанию).
+            status=1,  # 1 — не женат или не замужем, 6 — в активном поиске.
+            age_from=int(self.age_from) - 3,  # Минимальное расхождение в возрасте -3
+            age_to=int(self.age_to) + 3,  # максимальное расхождение в возрасте +3
+            has_photo=1,  # 1 — искать только пользователей с фотографией, 0 — искать по всем пользователям
+            count=100,
             fields="can_write_private_message, "  # Информация о том, может ли текущий пользователь отправить личное сообщение. Возможные значения: 1 — может; 0 — не может.
                    "city, "  # Информация о городе, указанном на странице пользователя в разделе «Контакты».
                    "domain, "  # Короткий адрес страницы.
                    "home_town, "  # Название родного города.
         )
-        number = 0
-        for person in res["items"]:
-            if not person["is_closed"] and "city" in person and person["city"]["id"] == city_id and person["city"]["title"] == city_title:
-                number += 1
-                id_vk = person["id"]
-                list_found_persons.append(id_vk)
-        print(f"Бот нашел {number} открытые профили для просмотра из {res['count']} в городе {city_title}")
+        if "items" in res:
+            number = 0
+            for person in res["items"]:
+                if not person["is_closed"] and "city" in person and person["city"].get("id") == self.city_id and person["city"].get("title") == self.city_title:
+                    number += 1
+                    id_vk = person["id"]
+                    self.list_found_persons.append(id_vk)
+            print(f"Бот нашел {number} открытые профили для просмотра из {res['count']} в городе {self.city_title}")
+        else:
+            print("Ошибка при получении данных от API")
 
     def photo_of_found_person(self, user_id):
         """Получение фотографии найденного человека. Принимает идентификатор пользователя user_id"""
         res = self.vk_user_got_api.photos.get(
             owner_id=user_id,
-            album_id="profile", # wall — фотографии со стены, profile — фотографии профиля.
-            extended=1, # 1 — будут возвращены дополнительные поля likes, comments, tags, can_comment, reposts. По умолчанию: 0.
+            album_id="profile",  # wall — фотографии со стены, profile — фотографии профиля.
+            extended=1,  # 1 — будут возвращены дополнительные поля likes, comments, tags, can_comment, reposts. По умолчанию: 0.
             count=30
         )
         photos_dict = {}
-        for photo in res['items']:
-            photo_id = str(photo["id"])
-            likes = photo["likes"]["count"]
-            # i_comments = i["comments"]
-            photos_dict[likes] = photo_id
+        for photo in res.get('items', []):
+            photo_id = str(photo.get("id"))
+            likes = photo.get("likes", {}).get("count")
+            if likes is not None:
+                photos_dict[likes] = photo_id
         sorted_photos = sorted(photos_dict.items(), reverse=True)
         photo_ids = [photo[1] for photo in sorted_photos]
         attachments = []
@@ -289,13 +343,13 @@ class Bot:
         """Получение уникального идентификатора найденного человека"""
         seen_person = [int(i[0]) for i in check()]  # Выбираем из БД просмотренные анкеты.
         if not seen_person:
-            if list_found_persons:
-                unique_person_id = list_found_persons[0]
+            if self.list_found_persons:
+                unique_person_id = self.list_found_persons[0]
                 return unique_person_id
             else:
                 return 0
         else:
-            for person_id in list_found_persons:
+            for person_id in self.list_found_persons:
                 if person_id not in seen_person:
                     unique_person_id = person_id
                     return unique_person_id
@@ -308,17 +362,21 @@ class Bot:
             fields="about, activities, bdate, status, can_write_private_message, city, common_count, contacts, "
                    "domain, home_town, interests, movies, music, occupation"
         )
-        user_info = res[0]
+        if res:
+            user_info = res[0]
 
-        first_name = user_info.get("first_name", "")
-        last_name = user_info.get("last_name", "")
-        age = self.get_years_of_person(user_info.get("bdate", ""))
-        vk_link = 'vk.com/' + user_info.get("domain", "")
-        city = user_info.get("city", {}).get("title") or user_info.get("home_town") or ""
+            first_name = user_info.get("first_name", "")
+            last_name = user_info.get("last_name", "")
+            age = self.get_years_of_person(user_info.get("bdate", ""))
+            vk_link = 'vk.com/' + user_info.get("domain", "")
+            city = user_info.get("city", {}).get("title") or user_info.get("home_town") or ""
 
-        info_string = f'{first_name} {last_name}, {age}, {city}. {vk_link}'
-        print (info_string)
-        return info_string
+            info_string = f'{first_name} {last_name}, {age}, {city}. {vk_link}'
+            print(info_string)
+            return info_string
+        else:
+            print("Ошибка при получении информации о пользователе")
+            return ""
 
     def send_photo(self, user_id, message, attachments):
         """Принимает идентификатор пользователя user_id, сообщение message и список вложений attachments,
@@ -327,7 +385,6 @@ class Bot:
             return False
 
         if not attachments:
-            print("Отсутствуют фотографии для отправки.")
             return False
 
         self.vk_group_got_api.messages.send(
@@ -383,7 +440,7 @@ class Bot:
             if photo_attachments:
                 self.send_photo(user_id, 'Фото с максимальными лайками', photo_attachments)
             else:
-                print("Отсутствуют фотографии для отправки.")
+                return
             insert_data_viewed(found_person_id)
 
 bot = Bot()
