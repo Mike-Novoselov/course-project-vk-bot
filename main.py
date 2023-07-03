@@ -1,35 +1,37 @@
 from vk_api.longpoll import VkEventType, VkLongPoll
-from bot import *
-from db import *
-from config import *
+from bot import bot
+from db import delete_table_viewed, create_table_viewed
 
-"""Цикл для прослушивания событий"""
-for event in bot.longpoll.listen(): # Начинается цикл, в котором происходит прослушивание событий VK.
 
-    if event.type == VkEventType.MESSAGE_NEW and event.to_me: # Проверяется, является ли полученное событие новым сообщением и адресовано ли оно боту
-        request = event.text.lower() # Получаем текст сообщения в нижнем регистре и сохраняем его в переменную request
-        user_id = event.user_id # Получаем идентификатор пользователя, отправившего сообщение, и сохраняем его в переменную user_id
+def event_listener():
+    for event in bot.longpoll.listen():
+        if event.type == VkEventType.MESSAGE_NEW and event.to_me:
+            request = event.text.lower()
+            user_id = event.user_id
 
-        if request == 'поиск' or request == 'f': # Если пользователь отправил команду "поиск" или "f", выполняются следующие действия:
-            bot.get_age_of_user(user_id) # Вызывается функция bot.get_age_of_user(user_id), которая запрашивает у пользователя возраст для поиска
-            bot.get_target_city(user_id) # Вызывается функция bot.get_target_city(user_id), которая запрашивает у пользователя город для поиска
-            bot.looking_for_persons(user_id)  # функция выполняет поиск людей и выводит список найденных в чат, а также добавляет их в базу данных
-            bot.show_found_person(user_id)  # функция выводит информацию о случайном человеке из базы данных в чат.
+            if request == 'поиск' or request == 'f':
+                bot.get_age_of_user(user_id)
+                bot.get_target_city(user_id)
+                bot.looking_for_persons(user_id)
+                bot.show_found_person(user_id)
 
-        elif request == 'удалить' or request == 'd': # Если пользователь отправил команду "удалить" или "d", выполняются следующие действия
-            delete_table_viewed()  # удаляет существующую БД.
-            create_table_viewed()  # создает новую БД.
-            bot.send_msg(user_id, f' База данных отчищена! Сейчас наберите "Поиск" или F ') # Отправляется сообщение пользователю
+            elif request == 'удалить' or request == 'd':
+                delete_table_viewed()
+                create_table_viewed()
+                bot.send_msg(user_id, 'База данных очищена! Сейчас наберите "Поиск" или "F"')
 
-        elif request == 'смотреть' or request == 'далее' or request == 's': # Если пользователь отправил команду "смотреть" или "s" или "далее", выполняются следующие действия
-            if bot.get_found_person_id() != 0: # Проверяется наличие записей в базе данных
-                bot.show_found_person(user_id) # Если есть записи, вызывается функция которая выводит информацию о следующем человеке из базы данных в чат
+            elif request == 'смотреть' or request == 'далее' or request == 's':
+                if bot.get_found_person_id() != 0:
+                    bot.show_found_person(user_id)
+                else:
+                    bot.send_msg(user_id, 'В начале наберите "Поиск" или "F"')
+
             else:
-                bot.send_msg(user_id, f' В начале наберите Поиск или f.  ') # Если записей нет, отправляется сообщение пользователю о том, что необходимо сначала выполнить команду "поиск" или "f"
+                bot.send_msg(user_id, f'{bot.get_user_name(user_id)}, бот готов к поиску. Наберите:\n'
+                                      f'"Поиск" или "F" - поиск людей.\n'
+                                      f'"Удалить" или "D" - удалить старую базу данных и создать новую.\n'
+                                      f'"Смотреть" или "Далее" или "S" - просмотр следующей записи в базе данных.')
 
-        else: # Если получена любая другая команда, отправляется сообщение пользователю с инструкциями о доступных командах
-            bot.send_msg(user_id, f'{bot.get_user_name(user_id)} Бот готов к поиску, наберите: \n '
-                                      f' "Поиск или F" - Поиск людей. \n'
-                                      f' "Удалить или D" - удаляет старую БД и создает новую. \n'
-                                      f' "Смотреть или Далее или S" - просмотр следующей записи в БД.')
 
+if __name__ == '__main__':
+    event_listener()
