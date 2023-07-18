@@ -362,27 +362,27 @@ class Bot:
 
 
     # def send_person_profile(self, user_id, person_id):
-    #   """Отправка профиля найденной анкеты пользователю.
-    #   Принимает идентификатор пользователя user_id и идентификатор анкеты person_id."""
-    #   try:
-    #       person_info = self.get_user_info(person_id)
-    #       
-    #       name = person_info.get('name')
-    #       bdate = person_info.get('bdate')
-    #       sex = person_info.get('sex')
-    #       city = person_info.get('city')
-    #       
-    #       profile_message = f"Имя: {name}\n" \
-    #                         f"Дата рождения: {bdate}\n" \
-    #                         f"Пол: {sex}\n" \
-    #                         f"Город: {city}"
-    #       
-    #       self.send_msg(user_id, profile_message)
-    #       insert_data_viewed(person_id)  # Добавление идентификатора просмотренной анкеты в базу данных
-    #       
-    #   except Exception as e:
-    #       error_message = f"Ошибка при отправке профиля анкеты: {e}"
-    #       self.send_msg(user_id, error_message)
+    #     """Отправка профиля найденной анкеты пользователю.
+    #     Принимает идентификатор пользователя user_id и идентификатор анкеты person_id."""
+    #     try:
+    #         person_info = self.get_user_info(person_id)
+            
+    #         name = person_info.get('name')
+    #         bdate = person_info.get('bdate')
+    #         sex = person_info.get('sex')
+    #         city = person_info.get('city')
+            
+    #         profile_message = f"Имя: {name}\n" \
+    #                           f"Дата рождения: {bdate}\n" \
+    #                           f"Пол: {sex}\n" \
+    #                           f"Город: {city}"
+            
+    #         self.send_msg(user_id, profile_message)
+    #         insert_data_viewed(person_id)  # Добавление идентификатора просмотренной анкеты в базу данных
+            
+    #     except Exception as e:
+    #         error_message = f"Ошибка при отправке профиля анкеты: {e}"
+    #         self.send_msg(user_id, error_message)
 
 #_________________________________________________________
 
