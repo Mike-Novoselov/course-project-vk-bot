@@ -3,7 +3,7 @@ import datetime
 import vk_api
 from config import user_token, group_token
 from random import randrange
-from db import check, insert_data_viewed
+from db import check, insert_data_viewed2
 
 
 class Bot:
@@ -65,6 +65,7 @@ class Bot:
             error_message = "Ошибка: пользователь не найден"
             self.send_msg(user_id, error_message)
 
+
     def process_user_data(self, user_id):
         """
         Обработка данных о пользователе, включая имя, возраст, город и пол.
@@ -94,7 +95,6 @@ class Bot:
             error_message = "Ошибка: информация о пользователе не найдена"
             self.send_msg(user_id, error_message)
             return None
-
 
     def get_user_name(self, user_id):
         """
@@ -140,6 +140,7 @@ class Bot:
                 raise ValueError("Ошибка: информация о дате рождения пользователя не найдена")
         else:
             raise ValueError("Ошибка: информация о пользователе не найдена")
+
 
     def get_target_city(self, user_id):
         """Определение города для поиска. Принимает идентификатор пользователя user_id."""
@@ -263,6 +264,7 @@ class Bot:
             else:
                 return f'{years} лет'
 
+
     def input_looking_age(self, user_id, age):
         """
         Обработка введенного возраста пользователем.
@@ -325,71 +327,6 @@ class Bot:
             else:
                 return 'Некорректный формат даты рождения.'
 
-#_________________________________________________________
-    # def looking_for_persons(self, user_id):
-    #     """Поиск людей на основе полученных данных. Принимает идентификатор пользователя user_id"""
-    #     self.list_found_persons = []
-    #     viewed_ids = set(check())  # Получение множества уже просмотренных анкет
-    #     res = self.vk_user_got_api.users.search(
-    #         sort=0,
-    #         city=self.city_id,
-    #         hometown=self.city_title,
-    #         sex=self.looking_for_gender(user_id),
-    #         status=1,
-    #         age_from=int(self.age_from) - 3,
-    #         age_to=int(self.age_to) + 3,
-    #         has_photo=1,
-    #         count=1000,
-    #         fields="can_write_private_message,city,domain,home_town"
-    #     )
-    #     if "items" in res:
-    #         number = 0
-    #         for person in res["items"]:
-    #             if not person["is_closed"] and "city" in person and person["city"].get("id") == self.city_id and person["city"].get("title") == self.city_title:
-    #                 number += 1
-    #                 id_vk = person["id"]
-    #                 if id_vk not in viewed_ids:
-    #                     self.list_found_persons.append(id_vk)
-    #     else:
-    #         print("Ошибка при получении данных от API")
-
-    #     if self.list_found_persons:
-    #         first_person_id = self.list_found_persons[0]
-    #         self.send_person_profile(user_id, first_person_id)  # Отправка профиля анкеты пользователю
-
-    #     print(f"Бот нашел {number} открытых профилей для просмотра в городе {self.city_title}")
-    
-
-
-    # def send_person_profile(self, user_id, person_id):
-    #     """Отправка профиля найденной анкеты пользователю.
-    #     Принимает идентификатор пользователя user_id и идентификатор анкеты person_id."""
-    #     try:
-    #         person_info = self.get_user_info(person_id)
-            
-    #         name = person_info.get('name')
-    #         bdate = person_info.get('bdate')
-    #         sex = person_info.get('sex')
-    #         city = person_info.get('city')
-            
-    #         profile_message = f"Имя: {name}\n" \
-    #                           f"Дата рождения: {bdate}\n" \
-    #                           f"Пол: {sex}\n" \
-    #                           f"Город: {city}"
-            
-    #         self.send_msg(user_id, profile_message)
-    #         insert_data_viewed(person_id)  # Добавление идентификатора просмотренной анкеты в базу данных
-            
-    #     except Exception as e:
-    #         error_message = f"Ошибка при отправке профиля анкеты: {e}"
-    #         self.send_msg(user_id, error_message)
-
-#_________________________________________________________
-
-
-
-
-
     def looking_for_persons(self, user_id):
         """Поиск людей на основе полученных данных. Принимает идентификатор пользователя user_id"""
         self.list_found_persons = []
@@ -418,6 +355,38 @@ class Bot:
             print(f"Бот нашел {number} открытые профили для просмотра из {res['count']} в городе {self.city_title}")
         else:
             print("Ошибка при получении данных от API")
+
+# 
+# def looking_for_persons(self, user_id, offset=0):
+#     """Поиск людей на основе полученных данных. Принимает идентификатор пользователя user_id"""
+#     self.list_found_persons = []
+#     res = self.vk_user_got_api.users.search(
+#         sort=0,  # 1 — по дате регистрации, 0 — по популярности.
+#         city=self.city_id,
+#         hometown=self.city_title,
+#         sex=self.looking_for_gender(user_id),  # 1— женщина, 2 — мужчина, 0 — любой (по умолчанию).
+#         status=1,  # 1 — не женат или не замужем, 6 — в активном поиске.
+#         age_from=int(self.age_from) - 3,  # Минимальное расхождение в возрасте -3
+#         age_to=int(self.age_to) + 3,  # максимальное расхождение в возрасте +3
+#         has_photo=1,  # 1 — искать только пользователей с фотографией, 0 — искать по всем пользователям
+#         count=100,
+#         offset=offset,  # добавляем смещение
+#         fields="can_write_private_message, "  # Информация о том, может ли текущий пользователь отправить личное сообщение. Возможные значения: 1 — может; 0 — не может.
+#                "city, "  # Информация о городе, указанном на странице пользователя в разделе «Контакты».
+#                "domain, "  # Короткий адрес страницы.
+#                "home_town, "  # Название родного города.
+#     )
+#     if "items" in res:
+#         number = 0
+#         for person in res["items"]:
+#             if not person["is_closed"] and "city" in person and person["city"].get("id") == self.city_id and person["city"].get("title") == self.city_title:
+#                 number += 1
+#                 id_vk = person["id"]
+#                 self.list_found_persons.append(id_vk)
+#         print(f"Бот нашел {number} открытые профили для просмотра из {res['count']} в городе {self.city_title}")
+#     else:
+#         print("Ошибка при получении данных от API")
+# 
 
     def photo_of_found_person(self, user_id):
         """Получение фотографии найденного человека. Принимает идентификатор пользователя user_id"""
@@ -487,6 +456,7 @@ class Bot:
             print("Ошибка при получении информации о пользователе")
             return ""
 
+
     def send_photo(self, user_id, message, attachments):
         """Принимает идентификатор пользователя user_id, сообщение message и список вложений attachments,
         которые являются ссылками на фотографии, далее отправляет сообщение с фотографиями указанному пользователю"""
@@ -550,6 +520,13 @@ class Bot:
                 self.send_photo(user_id, 'Фото с максимальными лайками', photo_attachments)
             else:
                 return
-            insert_data_viewed(found_person_id)
+            insert_data_viewed2(found_person_id)
 
 bot = Bot()
+# offset = 0
+# while True:
+#     bot.looking_for_persons(18629760, offset)
+#     offset += 100
+#     # проверяем, были ли все найденные анкеты отправлены
+#     if set(bot.list_found_persons).issubset(set(bot.sent_persons)):
+#         break  # если все анкеты были отправлены, выходим из цикла
